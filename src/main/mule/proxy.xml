@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<flow name="osStoreFlow" doc:id="239abd15-3be2-43c5-8fc4-c43380c06483" maxConcurrency="1">
+		<os:store doc:name="Store" doc:id="86f05e3d-cc5f-4bee-9155-aaa7a688a728" key="#[vars.storeKey]" failIfPresent="true" objectStore="Object_store"/>
+	</flow>
+	<flow name="osUpdateFlow" doc:id="15d9cb98-c2ec-40af-82f3-c3bd87e7c037" >
+		<os:store doc:name="Store" doc:id="5f218fc3-6ed5-4f14-969d-7977449d560b" key="#[vars.updateKey]" objectStore="Object_store" />
+	</flow>
+	<flow name="osRemoveFlow" doc:id="f002e115-7a4e-427c-964e-82ee04e1b1c9" >
+		<os:remove doc:name="Remove" doc:id="46978b6d-e0db-4212-a441-6b23b7b6d049" key="#[vars.removeKey]" objectStore="Object_store"/>
+	</flow>
+	<flow name="osRetrieveFlow" doc:id="60ff9b58-7df1-46e7-b8ac-364ba1dfe123" maxConcurrency="1" >
+		<os:retrieve doc:name="Retrieve" doc:id="49c786c1-8fc6-4ff2-88bc-bfff1f0cfb65" key="#[vars.getKey]" objectStore="Object_store"/>
+	</flow>
+	<flow name="fileReadFlow" doc:id="e05a6faf-459e-480c-be2f-631e74c9ed4d" maxConcurrency="1">
+		<file:read doc:name="Read" doc:id="d65aeb3e-2de8-4eff-9c28-b80abaa11e6c" config-ref="File_Config" path='#[vars.filePath default Mule::p("default.database.path")]'/>
+	</flow>
+	<flow name="osRetrieveAllFlow" doc:id="477f8454-f3c2-4c55-877b-64af767412ef" maxConcurrency="1" >
+		<os:retrieve-all doc:name="Retrieve all" doc:id="5c0885ef-7d29-4ba3-9cf3-bc91e844c3c0" objectStore="Object_store"/>
+	</flow>
+</mule>

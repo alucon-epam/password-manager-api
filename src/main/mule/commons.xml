@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:crypto="http://www.mulesoft.org/schema/mule/crypto"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/crypto http://www.mulesoft.org/schema/mule/crypto/current/mule-crypto.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="upsertPasswordEntryFlow" doc:id="17516599-acc0-440e-894b-c6554fb65b49" >
+		<crypto:jce-encrypt-pbe doc:name="Jce encrypt pbe" doc:id="002c460d-72d2-4389-bde7-a3cc48b93c79" password="${api.encryptionKey}" target="encryptedPassword" >
+			<crypto:content ><![CDATA[#[payload.password]]]></crypto:content>
+		</crypto:jce-encrypt-pbe>
+		<ee:transform doc:name="Create OS entry" doc:id="f323d565-f8f6-49ba-a28a-d1f582431107" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/json skipNullOn="everywhere"
+---
+{
+	title: payload.title,
+	description: payload.description,
+	password: toBase64(vars.encryptedPassword as Binary),
+	approval: payload.approval as Boolean default false,
+	approver: payload.approver default null,
+	pendingTokens: payload.pendingTokens default null,
+	approvedTokens: payload.approvedTokens default null
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Route to Create/Update" doc:id="d9266df1-5e5e-49af-8004-c711d48ff150" name='#[if(vars.method == "POST")&#10;	"osStoreFlow"&#10;else&#10;	"osUpdateFlow"]' />
+		<choice doc:name="Choice" doc:id="03dee3e4-1e6b-413f-80c8-da36d5954fa7" >
+			<when expression="#[payload.approval == true]" >
+				<crypto:jce-sign-pbe doc:name="Jce sign pbe" doc:id="eff217e9-5533-42fa-897c-9d977fca7d47" password="${api.encryptionKey}" target="token" >
+					<crypto:content ><![CDATA[#[payload.title ++ payload.approver]]]></crypto:content>
+				</crypto:jce-sign-pbe>
+				<ee:transform doc:name="Set response with auth" doc:id="355931cb-1c60-476f-ab8d-6b560897a801" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+var message=  if(vars.method == "POST") 
+		"Password added" else "Password updated"
+output application/json
+---
+{
+	status: "201",
+	message: message ++ ", please save the token bellow",
+	token: vars.token
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Set response" doc:id="7dc058d5-bd62-4764-a0e8-1eed55c24cb7" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="response" ><![CDATA[%dw 2.0
+var message=  if(vars.method == "POST") 
+		"Password added" else "Password updated"
+output application/json
+---
+{
+	status: "201",
+	message: message
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="unauthorizedSubflow" doc:id="fe1620f2-6303-4d3c-9abd-3153a51681b5" >
+		<ee:transform doc:name="Set response" doc:id="6f9a4f7c-500f-4537-a255-5e41c1c59b15">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 401,
+	message: "Unauthorized. Provide the token generated when initially creating the password"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

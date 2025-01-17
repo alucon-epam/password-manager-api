@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:crypto="http://www.mulesoft.org/schema/mule/crypto"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/crypto http://www.mulesoft.org/schema/mule/crypto/current/mule-crypto.xsd">
+	<flow name="addPasswordFlow" doc:id="822b4e2e-c261-40e3-924b-ecbfc8149e14" >
+		<logger level="INFO" doc:name="Log start" doc:id="d22e31a3-b6ee-4622-bac7-41f4e9bc0d8a" message='#["Encrypting password for "++ payload.title]'/>
+		<set-variable value="#[payload.title]" doc:name="storeKey" doc:id="bdd7763f-0181-47c1-ae83-bd2eae2ac988" variableName="storeKey"/>
+		<flow-ref doc:name="Upsert Password Entry Flow" doc:id="bd32bfe0-4cd4-4db6-abca-369ebebd6b1c" name="upsertPasswordEntryFlow"/>
+		<flow-ref doc:name="Re-synchronize" doc:id="c7627e75-a91d-4357-8ef9-0fa3ec68c952" name="syncToFileFlow"/>
+		<ee:transform doc:name="Set response" doc:id="ba345e87-0fc2-4e79-8d64-cfe46d98d5cb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[vars.response]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log end" doc:id="49472740-d488-4714-8bca-dba280355d50" />
+	</flow>
+	<flow name="getPasswordFlow" doc:id="18bd7ee7-5b72-482f-aab0-ab665e8392bf" >
+		<logger level="INFO" doc:name="Log start" doc:id="14da9caf-d017-4f44-a08c-a517c904e0f7" message='#["Start password retreival flow for id: " ++ attributes.uriParams."title"]'/>
+		<ee:transform doc:name="Set retriever, key &amp; token" doc:id="e433a8e2-4a3d-4f8b-9a17-90d143b7fea8" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="retrieveKey" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.uriParams."title"]]></ee:set-variable>
+				<ee:set-variable variableName="token" ><![CDATA[attributes.queryParams.token]]></ee:set-variable>
+				<ee:set-variable variableName="retriever" ><![CDATA[attributes.queryParams.retriever]]></ee:set-variable>
+				<ee:set-variable variableName="ownerToken" ><![CDATA[attributes.queryParams.owner]]></ee:set-variable>
+				<ee:set-variable variableName="request" ><![CDATA[attributes.queryParams.approvalRequest]]></ee:set-variable>
+			
+</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="File search" doc:id="6ad4bbf0-2660-435b-857a-2d7607120d55" name="fileSearchFlow"/>
+		<choice doc:name="Choice" doc:id="08a73f1c-0584-4a2c-8657-c71c6427d5c2" >
+			<when expression="#[!isEmpty(payload) and ((payload.approval default false) == false)]">
+				<set-variable value="#[import * from dw::core::Binaries&#10;output application/octet-stream&#10;---&#10;fromBase64(payload.password)]" doc:name="decodedPassword" doc:id="fd62f004-d30e-4d7b-825d-4b6ef55c7efd" variableName="decodedPassword"/>
+				<crypto:jce-decrypt-pbe doc:name="Jce decrypt pbe" doc:id="1d908fd9-adca-4ddf-b99f-f6eb442682f9" password="${api.encryptionKey}" >
+					<crypto:content ><![CDATA[#[vars.decodedPassword as Binary]]]></crypto:content>
+				</crypto:jce-decrypt-pbe>
+				<ee:transform doc:name="Set response" doc:id="2acd57b5-3189-4b11-8c71-cc08f5c75a36">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 200,
+	message: "Request process successfully",
+	password: payload replace /\"/ with  ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			
+</when>
+			<when expression="#[payload != null or (vars.request != null and vars.ownerToken != null)]">
+				<flow-ref doc:name="Password Approval Flow" doc:id="01b1a5a6-bac0-425e-ad2d-2f06c3e65be2" name="passwordApprovalFlow" />
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Set response" doc:id="f14baef8-aa88-47b3-a4a7-d571ff1c4405">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 404,
+	message: "Entry not found"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			
+</otherwise>
+		
+</choice>
+		<logger level="INFO" doc:name="Log end" doc:id="e20fb34f-21df-4275-9b8f-66640a05f0b8" message='#[payload.message]'/>
+	</flow>
+
+	<flow name="getAllPasswordsFlow" doc:id="f02325ef-b3f7-4a72-91f8-fe72eb66409a" >
+		<logger level="INFO" doc:name="Start log" doc:id="35eb7402-bf8c-4ea8-8810-345e92d65388" message="Retrieving all passwords"/>
+		<set-variable value="#[attributes.queryParams.query]" doc:name="query" doc:id="d59152d8-70ef-431c-a22f-d606dce88a9d" variableName="query"/>
+		<file:read doc:name="Read" doc:id="73f5438f-e73a-45ae-9a21-906684ccb406" config-ref="File_Config" path="${mule.home}\apps\${app.name}\src\main\resources\temp\database.csv" />
+		<ee:transform doc:name="Set response" doc:id="cd6afdba-4c94-4fbd-b3b2-f6be0c8397d8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json skipNullOn="everywhere"
+var noQuery = payload
+ map (value, index) ->{
+	title: value.title,
+	description: value.description,
+	approver: value.approver default null
+}
+var query = noQuery filter(value, index) -> (contains(upper(value.title), upper(vars.query)) or contains(upper(value.description), upper(vars.query)))
+---
+if(vars.query == "" or vars.query == "\"\"")
+	noQuery
+else
+	query]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="End log" doc:id="3a2af6d3-793d-4115-ad7a-02ac37c8086f" message="Password catalog retrieved"/>
+	</flow>
+	
+	<flow name="updatePasswordFlow" doc:id="5bc4b6f7-0245-4cc3-a603-f8cc1310471e" >
+		<logger level="INFO" doc:name="Start log" doc:id="fbb34c53-5608-4caf-a135-038543524c13" message='#["Updating password: " ++ attributes.uriParams.title]' />
+		<ee:transform doc:name="Set action, token and updateKey" doc:id="00b28b2d-ec5c-494b-8df8-716ff445b70b" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="action" ><![CDATA["update"]]></ee:set-variable>
+				<ee:set-variable variableName="updateKey" ><![CDATA[attributes.uriParams.title]]></ee:set-variable>
+				<ee:set-variable variableName="token" ><![CDATA[attributes.headers.token]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Owner validation flow" doc:id="71df1080-9925-40cd-b4f3-f37a16aeaf3c" name="ownerValidationFlow" />
+		<ee:transform doc:name="Set response" doc:id="9e8c0405-def4-484b-a575-84594bbd4347" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 200,
+	message: "Resource updated."
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="End log" doc:id="4b0af8bb-804b-42d4-a421-af745746f784" message="Password updated" />
+	
+</flow>
+	<flow name="deletePasswordFlow" doc:id="848ba8e2-39a4-49ed-9bc1-285f95744f98" >
+		<logger level="INFO" doc:name="Start log" doc:id="ebb41248-6988-447d-b75f-1c16d35d5723" message='#["Deleting password: " ++ attributes.uriParams.title]' />
+		<ee:transform doc:name="Set action and token" doc:id="f70520d1-b7b1-4112-96b8-c6af2eff6d21">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="method" ><![CDATA[attributes.method]]></ee:set-variable>
+				<ee:set-variable variableName="token" ><![CDATA[attributes.headers.token]]></ee:set-variable>
+				<ee:set-variable variableName="removeKey" ><![CDATA[attributes.uriParams.title]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Owner validation flow" doc:id="cd1d8c05-e123-4d20-8007-1fb2b23bc620" name="ownerValidationFlow"/>
+		
+		<logger level="INFO" doc:name="End log" doc:id="f8be94c6-4d3a-45a5-91b6-6d9f2553467c" message="Password deleted" />
+	
+</flow>
+	<sub-flow name="removeKeySubflow" doc:id="73ecd13e-b028-425a-a40d-b8e27ce22265" >
+		<flow-ref doc:name="OS Remove Flow" doc:id="da3bd3dc-f646-48e5-8363-5359abe56a0d" name="osRemoveFlow" />
+		<flow-ref doc:name="Re-synchronize" doc:id="3f2c48a6-2090-4de2-a5da-3b987d3db3e0" name="syncToFileFlow" />
+	</sub-flow>
+	
+
+</mule>

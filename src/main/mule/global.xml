@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+<!-- 	<api-gateway:autodiscovery apiId="12341" ignoreBasePath="true" doc:name="API Autodiscovery" doc:id="07f8e0f8-7123-4d6a-91f3-f2694cf7697a" flowRef="password-manager-api-main" />
+ -->	<os:config name="ObjectStore_Config" doc:name="ObjectStore Config" doc:id="b342aa54-ad19-45ce-a104-d546d7befd67" >
+		<os:connection >
+			<reconnection failsDeployment="true" >
+				<reconnect frequency="3000" count="5" />
+			</reconnection>
+		</os:connection>
+	</os:config>
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="11319e03-aabc-487b-b5eb-eb0258d00659" />
+		<file:config name="File_Config" doc:name="File Config" doc:id="b72c5176-e874-41dd-8555-2c672f866aa7" >
+		<file:connection workingDir="/">
+			<reconnection failsDeployment="true" >
+				<reconnect frequency="6000" count="5" />
+			</reconnection>
+		</file:connection>
+	</file:config>
+	<configuration-properties doc:name="Configuration properties" doc:id="6665a988-9326-46e4-bbaa-d37cbaa7b503" file="properties/${env}.properties" />
+</mule>

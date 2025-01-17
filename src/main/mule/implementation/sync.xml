@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+
+	<flow name="syncToFileFlow" doc:id="309aebd4-4d80-48e0-9b4d-a00726a63a8c" >
+		<scheduler doc:name="Scheduler" doc:id="aadf0e17-0441-4b21-962f-97c5a3ffeaf9" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="24" timeUnit="HOURS"/>
+			</scheduling-strategy>
+		</scheduler>
+		<logger level="INFO" doc:name="Start process" doc:id="5082615f-6fd1-432b-8b6c-b3d5ecdc88bb" message="Sync from Object Store started"/>
+		<flow-ref doc:name="OS Retrieve All" doc:id="a10e1ecd-6894-42ec-92eb-6c177682913c" name="osRetrieveAllFlow"/>
+		<ee:transform doc:name="Convert to CSV" doc:id="d79f2f66-d003-4ab8-8afb-ca747f3b86a4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[output application/csv 
+var readPayload = payload pluck ($ read("application/json"))
+fun arrayToString(el) = if (sizeOf(el default [])>0)el joinBy ";" else  ""
+---
+(readPayload map(item, index)-> (
+    item - "approvedTokens" - "pendingTokens" ++ {approvedTokens: arrayToString(item.approvedTokens)} ++ {pendingTokens: arrayToString(item.pendingTokens)} 
+))]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<file:write doc:name="Write" doc:id="a764f023-811e-40d1-b0c7-1833cca51f78" config-ref="File_Config" path="${mule.home}\apps\${app.name}\src\main\resources\temp\database.csv"/>
+		<logger level="INFO" doc:name="End process" doc:id="646703fc-62b9-40f6-be03-c13320fe4437" message="Sync from Object Store completed." />
+	</flow>
+	<flow name="syncFromFileFlow" doc:id="0f4c962c-7a10-47a4-8f51-edf265a52b92" >
+		<logger level="INFO" doc:name="Start process" doc:id="fdbf1b27-f2bb-43d4-889d-9b0b73ed1f9b" message="Sync from file started" />
+		<ee:transform doc:name="Convert to CSV" doc:id="ab047bd4-e568-4822-9d79-a1501e8a6830" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<foreach doc:name="For Each" doc:id="e5542e7b-23eb-4d2e-b269-dc74ba656b3e" >
+			<flow-ref doc:name="OS store" doc:id="9a160c50-57ab-4453-9e6e-065386fd9255" name="osStoreFlow"/>
+		</foreach>
+		<ee:transform doc:name="Set response" doc:id="ebd35ded-ed58-4c4f-89e0-92da9b119923" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="End process" doc:id="4dedbaa9-e0b0-4b6c-b74c-5a5f692dab19" message="Sync from file completed." />
+	</flow>
+	
+	
+	<flow name="backupDatabase" doc:id="f53646bc-7fb5-46d4-9384-e9a39899a4ab" >
+		<logger level="INFO" doc:name="Start log" doc:id="41708c71-a565-4242-afdb-c2879972672a" message="Starting database backup ..." />
+		<flow-ref doc:name="syncToFileFlow" doc:id="bf1e853a-c939-4eba-b542-ecd426a5139f" name="syncToFileFlow"/>
+		<file:read doc:name="Read" doc:id="f0958d7b-1481-4dd9-a289-2ac05d2cab16" config-ref="File_Config" path="${mule.home}\apps\${app.name}\src\main\resources\temp\database.csv"/>
+		<logger level="INFO" doc:name="End log" doc:id="ab09a2f6-cafd-4646-83cc-842f2578f061" message="Backup created." />
+	</flow>
+	
+	<flow name="restoreDatabase" doc:id="9daffb0a-6052-481f-b585-77928c21cd49" >
+		<logger level="INFO" doc:name="Start log" doc:id="f8f4b15e-7f32-4383-b4c6-a1b27592b491" message="Restoring database ..." />
+		<ee:transform doc:name="Transform Message" doc:id="73af0d54-09b1-4bd5-8e4f-71d7450796b6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<foreach doc:name="For Each" doc:id="b5aa7974-9a1d-402f-8a45-3283f71a4d50" >
+			<ee:transform doc:name="Transform Message" doc:id="7c4f8f62-08e1-47be-9f36-8cdede0fdd8b" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<flow-ref doc:name="osStore" doc:id="7605db6d-3aa5-40c4-9baa-8e8af68f60ab" name="osStoreFlow" />
+		</foreach>
+		<logger level="INFO" doc:name="End log" doc:id="ad90a8c1-8036-4050-9a90-80aa8459f2d1" message="Database restored" />
+	</flow>
+</mule>

@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:crypto="http://www.mulesoft.org/schema/mule/crypto"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/crypto http://www.mulesoft.org/schema/mule/crypto/current/mule-crypto.xsd">
+	<flow name="fileSearchFlow"
+		doc:id="756970dc-3770-4a56-bd1e-69f57dc83ebd">
+		<logger level="INFO" doc:name="Start processing"
+			doc:id="9d54ff65-94b2-4f4d-ae6b-93b576165882"
+			message='#["Started search for: " ++ attributes.uriParams.title]' />
+		<set-variable value="#[attributes.uriParams.title]"
+			doc:name="query" doc:id="3b7e5b76-ff27-4f42-bb3e-606a02cf29dd"
+			variableName="query" />
+		<flow-ref doc:name="File Read" doc:id="ea3872dd-cbdf-4b3e-90bc-81611e376715" name="fileReadFlow"/>
+		<ee:transform doc:name="Search for password" doc:id="2f6a4fc3-86ba-480d-9e34-a53511e0485d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var noQuery = payload
+ map (value, index) ->{
+	title: value.title,
+	description: value.description,
+	password: value.password ,
+	approval: value.approval as Boolean default false,
+	approver: value.approver default null,
+	approvedTokens: (value.approvedTokens splitBy ";")default [],	
+	pendingTokens: (value.pendingTokens splitBy ";")default []
+}
+var query = noQuery filter(value, index) -> (contains(upper(value.title), upper(vars.query)))
+---
+query[0]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="End processing" doc:id="6b43b16e-f817-43cd-a7b4-b73546fb8c70" message="Password retrieved."/>
+	</flow>
+	<flow name="passwordApprovalFlow" doc:id="ddb23bac-1da6-46f4-9887-8ebf731de2e2" >
+		<logger level="INFO" doc:name="Start processing" doc:id="08709134-d21e-4d5c-a222-0c6b27ee23d3" message='#["Started search for: " ++ payload.title]' />
+		<choice doc:name="Choice" doc:id="f6d0938b-2eb9-4e1e-9bca-daf96a2bf512">
+			<when expression="#[!isEmpty(vars.ownerToken) and !isEmpty(vars.request)]">
+				<crypto:jce-sign-pbe doc:name="Re-gen owner token" doc:id="43d29702-cf3d-40c8-b89f-c982e98ccb22" password="${api.encryptionKey}" target="token">
+					<crypto:content><![CDATA[#[payload.title ++ payload.approver]]]></crypto:content>
+				</crypto:jce-sign-pbe>
+				<choice doc:name="Choice" doc:id="8ec31eaa-b276-4ef0-8ce2-bb4ab4309f8f">
+					<when expression="#[output application/json&#10;---&#10;(vars.token == vars.ownerToken)and((payload.pendingTokens default []) contains(vars.request))]">
+						<flow-ref doc:name="approveTokenFlow" doc:id="9939fa7c-533f-4a36-b328-84c120c0c60f" name="approveTokenFlow"/>
+					</when>
+					<otherwise>
+						<flow-ref doc:name="Unauthorized Subflow" doc:id="4f933b82-c1a7-48c3-b2a4-0b4ce37573c9" name="unauthorizedSubflow" />
+					</otherwise>
+				</choice>
+			</when>
+			<when expression="#[!isEmpty(vars.token)]">
+				<set-variable value="#[import * from dw::core::Binaries&#10;---&#10;fromBase64(vars.token as Binary)]" doc:name="token" doc:id="30ab3b41-7fad-4347-804d-cab61377bd53" variableName="token"/>
+				<crypto:jce-sign-pbe doc:name="Gen approval request id" doc:id="6da8ee2a-7806-45cb-a8a4-73a1a0efdce3" password="${api.encryptionKey}" target="userTokenSalt">
+					<crypto:content><![CDATA[#[vars.token]]]></crypto:content>
+				</crypto:jce-sign-pbe>
+				<set-variable value="#[import * from dw::core::Binaries&#10;---&#10;toBase64(vars.userTokenSalt)]" doc:name="userTokenSalt" doc:id="4dae47a3-889d-43ac-ba9f-1258393c0eb2" variableName="userTokenSalt"/>
+				<choice doc:name="Choice" doc:id="c491fddb-b2fd-4aea-87e7-07b583edbd05" >
+					<when expression="#[output application/json&#10;---&#10;payload.approvedTokens contains(vars.userTokenSalt)]">
+						<set-variable value="#[import * from dw::core::Binaries&#10;output application/octet-stream&#10;---&#10;fromBase64(payload.password)]" doc:name="decodedPassword" doc:id="19f47307-d7df-4687-bdae-88f814100821" variableName="decodedPassword" />
+						<crypto:jce-decrypt-pbe doc:name="Decrypt password" doc:id="77104212-0fa8-4c68-a97f-ca1e31a10935" password="${api.encryptionKey}">
+					<crypto:content><![CDATA[#[vars.decodedPassword]]]></crypto:content>
+				</crypto:jce-decrypt-pbe>
+						<ee:transform doc:name="Set response" doc:id="d923f412-b6db-4806-8997-36b8807ee4a9">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 200,
+	message: "Success",
+	password: payload replace /\"/ with  ""
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+					</when>
+					<otherwise >
+						<flow-ref doc:name="Unauthorized Subflow" doc:id="6af2360f-a650-4831-983b-02f63ee67287" name="unauthorizedSubflow" />
+					</otherwise>
+				</choice>
+			</when>
+			<when expression="#[isEmpty(vars.token) and !isEmpty(vars.retriever)]">
+				<crypto:jce-sign-pbe doc:name="Generate user token" doc:id="9e08df7d-6465-40f7-8a38-f5d185ac0b54" password="${api.encryptionKey}" target="userToken">
+					<crypto:content><![CDATA[#[output application/json
+---
+payload.title ++ vars.retriever]]]></crypto:content>
+				</crypto:jce-sign-pbe>
+				<crypto:jce-sign-pbe doc:name="Gen approval request id" doc:id="330443f7-4ab1-4c1e-86b1-5bf93e2114ee" password="${api.encryptionKey}" target="userTokenSalt">
+			<crypto:content><![CDATA[#[vars.userToken]]]></crypto:content>
+		</crypto:jce-sign-pbe>
+				<ee:transform doc:name="toBase64" doc:id="8ea4e96f-b03f-4690-b7f8-c2b573042ebf">
+					<ee:message>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="userToken" ><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/json
+---
+toBase64(vars.userToken as Binary)]]></ee:set-variable>
+						<ee:set-variable variableName="userTokenSalt" ><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/json
+---
+toBase64(vars.userTokenSalt as Binary)]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Update tokens flow" doc:id="c84267bc-e522-4c17-ac35-52e450edc5e8" name="updateTokensFlow" />
+				<ee:transform doc:name="Set response" doc:id="3e9cbec4-e341-4a31-8afb-92f714bf3d7e">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 201,
+	message: "Please forward the bellow URL to the password owner and ask him to approve it using his token. Save the token to use after approval.",
+	token: vars.userToken,
+	approvalURL: "https://$(p('api.host')):$(p('api.port'))/api/passwords/$(payload[0].title)?approvalRequest=$(vars.userTokenSalt)&owner="
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<flow-ref doc:name="Unauthorized Subflow" doc:id="89d4763f-e053-4210-9d69-de8c173985ba" name="unauthorizedSubflow" />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="End processing" doc:id="fdbf4992-4b1d-4da0-addd-9be7a5f153e9" />
+	</flow>
+	<flow name="ownerValidationFlow" doc:id="09c5d5bb-35cc-4005-b49f-effb9e4ea471" >
+		<flow-ref doc:name="fileSearchFlow" doc:id="cd4a8dbc-eb9f-4a14-a73f-b588130a981b" name="fileSearchFlow" />
+		<choice doc:name="Choice" doc:id="e5fec7d9-bcb4-4b59-8e00-d4041e6805fe" >
+			<when expression="#[payload.approval == false]" >
+				<flow-ref doc:name="Route to action" doc:id="00fd715f-9623-463b-9f9d-9f1c1620fbb0" name='#[if(vars.method == "DELETE")&#10;	"removeKeySubflow"&#10;else&#10;	"upsertPasswordEntryFlow"]' />
+			</when>
+			<otherwise >
+				<crypto:jce-sign-pbe doc:name="Jce sign pbe" doc:id="2fd920d5-929e-484f-8428-46d0d384eefb" password="${api.encryptionKey}" target="dbToken" >
+					<crypto:content ><![CDATA[#[payload.title ++ payload.approver]]]></crypto:content>
+				</crypto:jce-sign-pbe>
+				<choice doc:name="Choice" doc:id="4ae4467c-f749-4843-9aa8-5c0b737ecc39" >
+					<when expression="#[vars.dbToken == vars.token]" >
+						<flow-ref doc:name="Route to action" doc:id="f53059ea-46d4-461d-a535-cdf215de22b1" name='#[if(vars.method == "DELETE")&#10;	"removeKeySubflow"&#10;else&#10;	"upsertPasswordEntryFlow"]' />
+					</when>
+					<otherwise >
+						<flow-ref doc:name="Unauthorized Subflow" doc:id="e911c2da-a5af-4a5d-b860-671d7fa553dc" name="unauthorizedSubflow"/>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="updateTokensFlow" doc:id="746687bf-47ba-4e68-aa8b-4ac1f433f6fa">
+		<ee:transform doc:name='Update pending tokens' doc:id="32dde6c4-af29-467d-9fbf-2d6e04f59a0f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+var pendingTokens = (payload.pendingTokens default []) + vars.userTokenSalt
+output application/json
+---
+(payload - "pendingTokens")
+ ++ {pendingTokens: pendingTokens}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="updateKey" ><![CDATA[vars.retrieveKey]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Upsert Password Entry Flow" doc:id="256f721f-c026-4b9c-ba97-6a3b86f40d2f" name="osUpdateFlow"/>
+		<flow-ref doc:name="Re-synchronize" doc:id="23c6b9aa-81f8-46ca-825b-dc9946b3f425" name="syncToFileFlow"/>
+	</flow>
+	<flow name="approveTokenFlow" doc:id="05f9a58d-32bf-4092-89aa-c0f86ad0fe1e" >
+		<ee:transform doc:name='Update pending and approved tokens' doc:id="83e256e0-038a-4249-a20b-697d02043d59" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+var tokens = (payload.approvedTokens default []) + vars.request
+var pendingTokens = (payload.pendingTokens default []) - vars.request
+output application/json
+---
+(payload - "approvedTokens" - "pendingTokens")
+ ++ {approvedTokens: tokens}
+ ++ {pendingTokens: pendingTokens}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="updateKey" ><![CDATA[vars.retrieveKey]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<flow-ref doc:name="Upsert Password Entry Flow" doc:id="24fa5fbc-94e6-44bc-a165-bcd61a183b6e" name="osUpdateFlow" />
+		<flow-ref doc:name="Re-synchronize" doc:id="97fe122b-1a22-418e-bfca-42645c5efe74" name="syncToFileFlow" />
+		<ee:transform doc:name="Set response" doc:id="ea26d84d-16ce-46ae-baff-0b04305994bb" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: 200,
+	message: "Request processed successfully",
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
