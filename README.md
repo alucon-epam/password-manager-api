@@ -2,20 +2,23 @@
 
 ## Description
 
-The Password Manager API is a comprehensive solution crafted for environments where Mule applications are operational within a private network, ensuring secure password management. This API is tailored for businesses that still utilize email for password sharing, offering safer and more efficient alternatives.
+The Password Manager API is a comprehensive solution crafted for environments where Mule applications are operational within a private network, ensuring secure password management. This API is tailored for environments where email is used for password sharing, offering safer and more efficient alternatives.
 
 ## Solution Design
 
 The API can be deployed across various models and utilizes Object Store V2 in CloudHub for persistent storage to prevent data loss upon instance restart. Due to Object Store's access limitations, the API employs a daily or on-demand synchronization to a local CSV file, facilitating effortless access, searchability, and backup.
+The passwords are encrypted using the Crypto module from Anypoint Exchange for symmetric encryption of the password as well as asymetric encryption for the token and access requests generated.
 
 ## API Endpoints
 
-### Retrieve Passwords
+### Retrieve Existing Passwords
 - `GET /passwords?query=`: Retrieve passwords based on a query that matches against the title and description.
+
+### Retrieve a Password
 - `GET /passwords/{title}?token=`: Fetch a specific password. If the password requires approval (`approval=true`), a token is required. If `approval=false`, the token parameter should be omitted.
 
 ### Start Authorization Flow
-- `GET /passwords/{title}/authorize?retriever=`: Initiate the authorization flow for password retrieval by providing a retriever's email. Returns an authorization token and URL.
+- `GET /passwords/{title}/request?retriever=`: Initiate the authorization flow for password retrieval by providing a retriever's email. Returns an authorization token and URL.
 
 ### Approve Password Request
 - `GET /passwords/{title}/approve?approvalRequest={}&owner={}`: Used by the password owner to approve a pending request. Requires owner's token for authentication.
@@ -42,6 +45,19 @@ The API can be deployed across various models and utilizes Object Store V2 in Cl
 
   - `PATCH /passwords/{title}`: Update the description or content of an existing password. Changing the title will create a new entry instead of updating.
 
+
+### Backup database 
+
+  - `GET /database?admin=`: Get a backup of the database. Must provide admin token.
+    
+### Upload database
+
+  - `POST /database`: Restore a database from a previous csv backup.
+    
+### Sync to File
+
+  - `GET /sync`: Trigger the OS <-> file synchronization on demant
+    
 ## Data Model
 | Field | Description | Notes |
 | :-- | :-- | :-- |
