@@ -21,7 +21,7 @@ The passwords are encrypted using the Crypto module from Anypoint Exchange for s
 - `GET /passwords/{title}/request?retriever=`: Initiate the authorization flow for password retrieval by providing a retriever's email. Returns an authorization token and URL.
 
 ### Approve Password Request
-- `GET /passwords/{title}/approve?approvalRequest={}&owner={}`: Used by the password owner to approve a pending request. Requires owner's token for authentication.
+- `GET /passwords/{title}/approve?requestID={}&owner={}`: Used by the password owner to approve a pending request. Requires owner's token for authentication.
 
 ### Synchronize Data Store
 - `GET /sync`: Synchronize the object store with the backup CSV file.
@@ -45,7 +45,6 @@ The passwords are encrypted using the Crypto module from Anypoint Exchange for s
 
   - `PATCH /passwords/{title}`: Update the description or content of an existing password. Changing the title will create a new entry instead of updating.
 
-
 ### Backup database 
 
   - `GET /database?admin=`: Get a backup of the database. Must provide admin token.
@@ -59,6 +58,8 @@ The passwords are encrypted using the Crypto module from Anypoint Exchange for s
   - `GET /sync`: Trigger the OS <-> file synchronization on demant
     
 ## Data Model
+This is the data model that will be used for the CSV file: 
+
 | Field | Description | Notes |
 | :-- | :-- | :-- |
 | title | Unique identifier without spaces/special chars | Can only contain / and _ |
